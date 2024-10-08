@@ -1,4 +1,4 @@
-import e, { Express, Request, Response } from 'express'
+import { Express, Request, Response } from 'express'
 import express from 'express'
 import redis from 'redis'
 import fs from 'fs'
