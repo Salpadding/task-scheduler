@@ -131,18 +131,18 @@ async function testSeqTask() {
         console.log(req.params.step) // 打印当前 worker
         let nonce = parseInt(req.body.nonce)
         nonce++
-        res.json({ ok: true, poll: {url: ''} }) // +1 然后 return 给调度器 调度器回给下一个 worker, poll 可以用来告知调度器此任务需要轮询
+        res.json({ ok: true, poll: { url: '' } }) // +1 然后 return 给调度器 调度器回给下一个 worker, poll 可以用来告知调度器此任务需要轮询
         await axios.post(req.query['callback'], { nonce: nonce }) // 调度器的传过来 callback 参数用来确认任务完成 + 返回值给下一个任务
     })
 
     app.listen(port, async () => {
-        const methods = [ '/task/step1','/task/step2','/task/step3','/task/step4','/task/step5','/task/step6']
+        const methods = ['/task/step1', '/task/step2', '/task/step3', '/task/step4', '/task/step5', '/task/step6']
             .map(x => `http://localhost:${port}${x}`)
 
         let url = '' // 合成 callee callback -> url
         for (let i = methods.length - 1; i >= 0; i--) {
             const u = new URL('http://localhost:3010/task/new')
-            if(!url) {
+            if (!url) {
                 u.searchParams.set('callee', methods[i])
                 url = u.toString()
                 continue
@@ -158,6 +158,37 @@ async function testSeqTask() {
 
 }
 
-testSeqTask().catch(console.error)
+async function testRateLimit() {
+    const app = express()
+    app.use(express.json())
+
+    app.post('/api/test', async (req, res) => {
+        console.log('new request received')
+        setTimeout(() => res.json({ ok: true, data: 'new request' }), 3000)
+    })
+
+    app.post('/api/callback', async (req, res) => {
+        console.log('callback received = ')
+        console.log(req.body)
+        res.json({ ok: true })
+    })
+
+    app.listen(port, async () => {
+        const u = new URL('http://localhost:3010/task/new')
+        const cb = new URL('http://localhost:3010/callback/new')
+        cb.searchParams.set('callee', `http://localhost:${port}/api/test`)
+
+        u.searchParams.set('callback', `http://localhost:${port}/api/callback`)
+        u.searchParams.set('callee', cb.toString())
+        u.searchParams.set('group', 'transfer')
+
+        for (let i = 0; i < 100; i++) {
+            const j = i
+            axios.post(u.toString(), { nonce: j })
+        }
+    })
+}
+
+testRateLimit().catch(console.error)
 
 

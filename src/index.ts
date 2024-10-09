@@ -110,15 +110,17 @@ export class BaseServer {
         try {
             const opts: {
                 callback: string
+                callee?: string
                 body: any
-                window?: number
-                key?: string
-                id?: string
             } = JSON.parse(msg.content.toString('utf8'))
 
-            console.log(`CALLBACK ${opts.callback} with payload ${JSON.stringify(opts.body)}`)
-            const resp = await axios.post(opts.callback, opts.body, { timeout: this.params.rescheduleAfter })
-            console.log(`CALLBACK ${opts.callback} with payload ${JSON.stringify(opts.body)} status code = ${resp.status}`)
+            let reqBody = opts.body
+            if (opts.callee)
+                reqBody = (await axios.post(opts.callee, reqBody)).data
+
+            console.log(`CALLBACK ${opts.callback} with payload ${JSON.stringify(reqBody)}`)
+            const resp = await axios.post(opts.callback, reqBody, { timeout: this.params.rescheduleAfter })
+            console.log(`CALLBACK ${opts.callback} with payload ${JSON.stringify(reqBody)} status code = ${resp.status}`)
             if (resp.status >= 400) {
                 throw new Error(`callback failed`)
             }
@@ -147,12 +149,14 @@ export interface CallbackQuery {
     setTimeout?: number
     setInterval?: number
     callback: string
+    callee?: string
     window?: number
     key?: string
 }
 
 export interface CallbackMQPayload {
     callback: string
+    callee?: string
     body: any
     id?: string
 }
@@ -221,6 +225,7 @@ export class CallbackServer extends BaseServer {
         // setTimeout = 定时回调间隔
         this.app.post('/private/callback/interval', async (req, res) => {
             const backend = req.query['callback'] as string
+            const callee = req.query['callee'] as string
             const setTimeout = parseInt(req.query['setTimeout'] as string)
 
             if (!backend || !setTimeout || isNaN(setTimeout)) {
@@ -229,6 +234,9 @@ export class CallbackServer extends BaseServer {
             }
 
             try {
+                let reqBody = req.body
+                if (callee)
+                    reqBody = (await axios.post(callee, reqBody)).data
                 const resp = await axios.post(backend, req.body)
                 if (resp.data?.data) {
                     res.json({ ok: true })
@@ -260,7 +268,7 @@ export class CallbackServer extends BaseServer {
                 ['setTimeout', parseInt],
                 ['setInterval', parseInt],
                 'callback', ['window', parseInt],
-                'key',
+                'key', 'callee'
             ]
 
             for (const p of queryParams) {
@@ -285,6 +293,7 @@ export class CallbackServer extends BaseServer {
 
             const rabbitMqPayload: CallbackMQPayload = {
                 callback: callbackQuery.callback,
+                callee: callbackQuery.callee,
                 body: req.body
             }
 
@@ -299,6 +308,7 @@ export class CallbackServer extends BaseServer {
                 const u = new URL(`${this.params.self}/private/callback/interval`)
                 u.searchParams.set('setTimeout', callbackQuery.setInterval.toString())
                 u.searchParams.set('callback', callbackQuery.callback)
+                u.searchParams.set('callee', callbackQuery.callee)
 
                 await axios.post(`${this.params.self}/callback/new`, req.body, {
                     params: {
